@@ -103,8 +103,3 @@ tools/ffmpeg-*-static
 tools/ffmpeg-release
 tools/ffmpeg-release-*.tar.xz
 tools/Miniconda3-latest-*.sh
-
-egs2/urgent24/enh1/urgent_local_data.tar.gz
-egs2/urgent24/enh1/local/urgent2024_challenge/
-egs2/urgent24/enh1/.ipynb_checkpoints/
-egs2/urgent24/vs_code_recipe/
