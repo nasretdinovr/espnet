@@ -32,9 +32,9 @@ if __name__ == "__main__":
     # Clean speech for training
     train_speech_files = sorted(glob(args.wsj0 + "**/si_tr_s/**/*.wav", recursive=True))
     valid_speech_files = sorted(
-        glob(args.wsj0 + "**/si_dt_05/**/*.wav", recursive=True)
+        glob(args.wsj0 + "**/si_et_20/**/*.wav", recursive=True)
     )
-    test_speech_files = sorted(glob(args.wsj0 + "**/si_et_05/**/*.wav", recursive=True))
+    test_speech_files = sorted(glob(args.wsj0 + "**/si_et_20/**/*.wav", recursive=True))
 
     noise_files = glob(args.chime3 + "/**/backgrounds/*.wav", recursive=True)
 
