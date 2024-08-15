@@ -39,7 +39,7 @@ mkdir -p ./data/
 
 local/convert2wav.sh ${WSJ0} ./data/wsj0_ful_wav || exit 1;
 
-python local/create_wsj0_chime3.py ./data/wsj0_ful_wav/wsj0 ${CHIME3}/data/ ./data/wsj_chime3
+python local/create_wsj0_chime3.py ${WSJ0} ${CHIME3}/data/ ./data/wsj_chime3
 
 WSJ_CHIME3="./data/wsj_chime3"
 
