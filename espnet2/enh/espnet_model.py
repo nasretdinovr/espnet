@@ -20,8 +20,10 @@ from espnet2.enh.separator.bsrnn_separator import BSRNNSeparator
 from espnet2.enh.separator.dan_separator import DANSeparator
 from espnet2.enh.separator.tfgridnetv3_separator import TFGridNetV3
 from espnet2.enh.separator.uses_separator import USESSeparator
+from espnet2.enh.separator.se_mamba_sepataror import SEMambaSeparator
 from espnet2.torch_utils.device_funcs import force_gatherable
 from espnet2.train.abs_espnet_model import AbsESPnetModel
+
 
 is_torch_1_9_plus = V(torch.__version__) >= V("1.9.0")
 
