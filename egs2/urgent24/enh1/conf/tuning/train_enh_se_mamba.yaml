@@ -73,7 +73,8 @@ separator: se_mamba
 separator_conf:
     n_srcs: 1
     n_imics: 1
-    n_layers: 6
+    mamba_blocks: 4
+    mamba_layers: 1
     lstm_hidden_units: 200
     attn_n_head: 4
     attn_qk_output_channel: 2
