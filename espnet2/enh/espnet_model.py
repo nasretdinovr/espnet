@@ -20,6 +20,7 @@ from espnet2.enh.separator.bsrnn_separator import BSRNNSeparator
 from espnet2.enh.separator.dan_separator import DANSeparator
 from espnet2.enh.separator.tfgridnetv3_separator import TFGridNetV3
 from espnet2.enh.separator.uses_separator import USESSeparator
+from espnet2.enh.separator.se_mamba_separator import SEMambaSeparator
 from espnet2.torch_utils.device_funcs import force_gatherable
 from espnet2.train.abs_espnet_model import AbsESPnetModel
 
@@ -272,7 +273,7 @@ class ESPnetEnhancementModel(AbsESPnetModel):
             # Adaptively adjust the STFT/iSTFT window/hop sizes for
             # BSRNNSeparator and USESSeparator
             if not isinstance(
-                self.separator, (BSRNNSeparator, USESSeparator, TFGridNetV3)
+                self.separator, (BSRNNSeparator, USESSeparator, TFGridNetV3, SEMambaSeparator)
             ):
                 fs = None
 
