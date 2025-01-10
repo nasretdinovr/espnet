@@ -1,3 +1,4 @@
+import einops
 import math
 from collections import OrderedDict
 from typing import Dict, List, Optional, Tuple
@@ -87,6 +88,9 @@ class SEMambaSeparator(AbsSeparator):
         emb_hs=1,
         activation="prelu",
         eps=1.0e-5,
+        # conditional normalization layers
+        conditional_norm_type : Optional[str] = None,
+        condition_dim : Optional[int] = None,
     ):
         super().__init__()
         self.n_srcs = n_srcs
@@ -128,7 +132,7 @@ class SEMambaSeparator(AbsSeparator):
 
         self.TSMamba = nn.ModuleList([])
         for i in range(self.num_tscblocks):
-            self.TSMamba.append(TSMambaBlock(mamba_layers))
+            self.TSMamba.append(TSMambaBlock(mamba_layers, conditional_norm_type=conditional_norm_type, condition_dim=condition_dim))
 
         #self.laynorms = nn.ModuleList([])
         #for i in range(self.num_tscblocks):
@@ -142,6 +146,7 @@ class SEMambaSeparator(AbsSeparator):
         input: torch.Tensor,
         ilens: torch.Tensor,
         additional: Optional[Dict] = None,
+        condition: Optional[torch.Tensor] = None,
     ) -> Tuple[List[torch.Tensor], torch.Tensor, OrderedDict]:
         """Forward.
 
@@ -160,6 +165,7 @@ class SEMambaSeparator(AbsSeparator):
                     we return it also in output.
         """
 
+        # AJLOG: This `feature` is not used anywhere.
         # B, 2, T, (C,) F
         if is_complex(input):
             feature = torch.stack([input.real, input.imag], dim=1)
@@ -189,7 +195,9 @@ class SEMambaSeparator(AbsSeparator):
 
         noisy_mag = torch.abs(input)
         noisy_pha = torch.angle(input)
-        noisy_mag = torch.pow(noisy_mag, 0.3)
+
+        # AJLOG: This is not necessary, since we apply the exponent in the encoder and the decoder
+        # noisy_mag = torch.pow(noisy_mag, 0.3)
 
 
         noisy_mag = noisy_mag.unsqueeze(1)  # [B, 1, T, F]
@@ -204,11 +212,13 @@ class SEMambaSeparator(AbsSeparator):
         x = self.dense_encoder(x)
 
         for i in range(self.num_tscblocks):
-            x = self.TSMamba[i](x)
+            x = self.TSMamba[i](x, condition=condition)
         
         denoised_mag = (self.mask_decoder(x)).permute(0, 3, 2, 1).squeeze(-1)
         denoised_pha = self.phase_decoder(x).permute(0, 3, 2, 1).squeeze(-1)
-        denoised_mag = torch.pow(denoised_mag, (1.0/0.3))
+
+        # AJLOG: This is not necessary, since we apply the exponent in the encoder and the decoder
+        # denoised_mag = torch.pow(denoised_mag, (1.0/0.3))
 
         if F % 2 == 0:
             denoised_mag = denoised_mag[:, :F, :]
@@ -425,7 +435,7 @@ class PhaseDecoder(nn.Module):
 
 
 class TSMambaBlock(nn.Module):
-    def __init__(self, n_layer):
+    def __init__(self, n_layer, conditional_norm_type=None, condition_dim=None):
         super(TSMambaBlock, self).__init__()
 
         self.time_mamba = MambaBlock(in_channels=64, n_layer=n_layer)
@@ -440,13 +450,36 @@ class TSMambaBlock(nn.Module):
         )
         #LayerNormalization(emb_dim, dim=-3, total_dim=4, eps=eps),
 
-    def forward(self, x):
+        # Conditional normalization
+        # input always has 64 channels, since tlinear and flinear have 64 output channels
+        self.conditional_norm1 = get_conditional_norm(conditional_norm_type, dim=64, condition_dim=condition_dim)
+        self.conditional_norm2 = get_conditional_norm(conditional_norm_type, dim=64, condition_dim=condition_dim)
+
+    def forward(self, x, condition=None):
         b, c, t, f = x.size()
+
+        # view as [B*F, T, C]
         x = x.permute(0, 3, 2, 1).contiguous().view(b*f, t, c)
-        x = self.tlinear( self.time_mamba(x).permute(0,2,1) ).permute(0,2,1) + x
+        residual = x
+
+        if condition is not None:
+            # conditional normalization
+            x = self.conditional_norm1(x, condition)
+
+        x = self.tlinear( self.time_mamba(x).permute(0,2,1) ).permute(0,2,1) + residual
+
+        # view as [B*T, F, C]
         x = x.view(b, f, t, c).permute(0, 2, 1, 3).contiguous().view(b*t, f, c)
-        x = self.flinear( self.freq_mamba(x).permute(0,2,1) ).permute(0,2,1) + x
+
+        residual = x
+        if condition is not None:
+            x = self.conditional_norm2(x, condition)
+
+        x = self.flinear( self.freq_mamba(x).permute(0,2,1) ).permute(0,2,1) + residual
+
+        # go back to [B, F, T, C]
         x = x.view(b, t, f, c).permute(0, 3, 1, 2)
+
         #fesfesf
         return x
 
@@ -648,3 +681,63 @@ class LearnableSigmoid_2d_SFI(nn.Module):
             slope_interpolated = self.slope
 
         return self.beta * torch.sigmoid(slope_interpolated * x)
+    
+
+class AdaptiveRMSNorm(nn.Module):
+    """
+    Adaptive Root Mean Square Layer Normalization given a conditional embedding.
+    This enables the model to consider the conditional input during normalization.
+    """
+
+    def __init__(self, dim: int, cond_dim: Optional[int] = None):
+        super().__init__()
+        if cond_dim is None:
+            cond_dim = dim
+        self.scale = dim**0.5
+
+        self.to_gamma = nn.Linear(cond_dim, dim)
+        self.to_beta = nn.Linear(cond_dim, dim)
+
+        # init adaptive normalization to identity
+
+        nn.init.zeros_(self.to_gamma.weight)
+        nn.init.ones_(self.to_gamma.bias)
+
+        nn.init.zeros_(self.to_beta.weight)
+        nn.init.zeros_(self.to_beta.bias)
+
+    def forward(self, x: torch.Tensor, cond: torch.Tensor):
+        normed = nn.functional.normalize(x, dim=-1) * self.scale
+
+        gamma, beta = self.to_gamma(cond), self.to_beta(cond)
+        # reshape to [B, 1, 1, D]
+        gamma = einops.rearrange(gamma, 'B D -> B 1 1 D')
+        beta = einops.rearrange(beta, 'B D -> B 1 1 D')
+
+        # disentangle batch and feature dimensions (T or F, depending if it's time or freq mamba)
+        b = cond.size(0)
+        bfeat, bseq, bdim = normed.size()
+        assert bfeat % b == 0, f'dimension not matching: bfeat % b != 0: {bfeat} % {b} = {bfeat % b}'
+        # reshape to [B, T or F, sequence_length, D]
+        normed = normed.view(b, bfeat//b, bseq, bdim)
+        # apply adaptive RMS norm
+        normed = normed * gamma + beta
+        # re-entangle batch and feature dimensions
+        normed = normed.view(bfeat, bseq, bdim)
+
+        return normed
+
+
+def get_conditional_norm(norm_type, dim, condition_dim):
+    """Instantiate a conditional normalization layer.
+    """
+    if norm_type is None:
+        print('get_conditional_norm: No conditional normalization used')
+        # identity
+        return None
+    elif norm_type == 'adaptive_rms_norm':
+        print(f'get_conditional_norm: Conditional normalization using AdaptiveRMSNorm {norm_type} with dim={dim} and condition_dim={condition_dim}')
+        # adaptive RMS norm
+        return AdaptiveRMSNorm(dim=dim, cond_dim=condition_dim)
+    else:
+        raise ValueError(f"Unknown conditional normalization {norm_type}")
