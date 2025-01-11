@@ -108,17 +108,17 @@ diffusion_model_conf:
         activation: prelu
         eps: 1.0e-05
         conditional_norm_type: adaptive_rms_norm
-        condition_dim: 128
+        condition_dim: 1024
     flow: optimal_transport_flow
     flow_conf:
         sigma_start: 1.0
-        sigma_end: 1e-4
+        sigma_end: 1.0e-4
     loss_type: "mse"
     sampler: cfm_euler
     sampler_conf:
-        time_min: 1e-8
+        time_min: 1.0e-8
         time_max: 1.0
-        N: 5
+        num_steps: 5
 
 # A list for criterions
 # The overlall loss in the multi-task learning will be:

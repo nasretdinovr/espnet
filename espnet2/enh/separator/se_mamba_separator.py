@@ -75,7 +75,7 @@ class SEMambaSeparator(AbsSeparator):
 
     def __init__(
         self,
-        input_dim,
+        input_dim=None, # AJLOG: it appears this is a placeholder, which is unused
         n_srcs=2,
         n_imics=1,
         mamba_blocks=6,

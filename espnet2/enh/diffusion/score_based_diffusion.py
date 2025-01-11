@@ -243,6 +243,7 @@ class FlowModel(AbsDiffusion):
         y = feature_mix.permute(0, 2, 1).unsqueeze(1)
 
 
+        # flow starts from zero
         x_start = torch.zeros_like(y)
 
         # generate time
