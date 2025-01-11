@@ -505,7 +505,7 @@ class ConditionalFlowMatchingEulerSampler(ConditionalFlowMatchingSampler):
     @torch.inference_mode()
     def forward(
         self, state: torch.Tensor, estimator_condition: torch.Tensor, state_length: torch.Tensor):
-        time_steps = torch.linspace(self.time_min, self.time_max, self.num_steps + 1)
+        time_steps = torch.linspace(self.time_min, self.time_max, self.num_steps)
 
         if state_length is not None:
             state = mask_sequence_tensor(state, state_length)
