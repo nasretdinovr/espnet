@@ -128,7 +128,10 @@ class SEMambaSeparator(AbsSeparator):
         #self.num_tscblocks = 10
         #self.num_tscblocks = 20
         self.num_tscblocks = mamba_blocks
-        self.dense_encoder = DenseEncoder(in_channel=2)
+        # input to dense encoder
+        #   - 2 channels if used as a predictive model (no conditional normalization)
+        #   - 4 channels if used as a conditional model (conditional normalization)
+        self.dense_encoder = DenseEncoder(in_channel=2 if conditional_norm_type is None else 4)
 
         self.TSMamba = nn.ModuleList([])
         for i in range(self.num_tscblocks):
@@ -141,12 +144,18 @@ class SEMambaSeparator(AbsSeparator):
         self.mask_decoder = MaskDecoder(out_channel=1)
         self.phase_decoder = PhaseDecoder(out_channel=1)
 
+
+        # Conditioning
+        if condition_dim is not None:
+            dim = 1024 # keep fixed for now
+            self.sinu_pos_emb = nn.Sequential(LearnedSinusoidalPosEmb(dim), nn.Linear(dim, condition_dim), nn.SiLU())
+
     def forward(
         self,
         input: torch.Tensor,
         ilens: torch.Tensor,
         additional: Optional[Dict] = None,
-        condition: Optional[torch.Tensor] = None,
+        time_cond: Optional[torch.Tensor] = None,
     ) -> Tuple[List[torch.Tensor], torch.Tensor, OrderedDict]:
         """Forward.
 
@@ -165,17 +174,19 @@ class SEMambaSeparator(AbsSeparator):
                     we return it also in output.
         """
 
+        print('semamba Forward')
+
         # AJLOG: This `feature` is not used anywhere.
         # B, 2, T, (C,) F
-        if is_complex(input):
-            feature = torch.stack([input.real, input.imag], dim=1)
-        else:
-            assert input.size(-1) == 2, input.shape
-            feature = input.moveaxis(-1, 1)
+        # if is_complex(input):
+        #     feature = torch.stack([input.real, input.imag], dim=1)
+        # else:
+        #     assert input.size(-1) == 2, input.shape
+        #     feature = input.moveaxis(-1, 1)
 
-        assert feature.ndim == 4, "Only single-channel mixture is supported now"
+        # assert feature.ndim == 4, "Only single-channel mixture is supported now"
 
-        n_batch, _, n_frames, n_freqs = feature.shape
+        # n_batch, _, n_frames, n_freqs = feature.shape
 
         """
         batch = self.conv(feature)  # [B, -1, T, F]
@@ -192,17 +203,22 @@ class SEMambaSeparator(AbsSeparator):
 
         return batch, ilens, OrderedDict()
         """
-
         noisy_mag = torch.abs(input)
         noisy_pha = torch.angle(input)
 
         # AJLOG: This is not necessary, since we apply the exponent in the encoder and the decoder
         # noisy_mag = torch.pow(noisy_mag, 0.3)
 
+        if input.ndim == 3:
+            noisy_mag = noisy_mag.unsqueeze(1)  # [B, 1, T, F]
+            noisy_pha = noisy_pha.unsqueeze(1)  # [B, 1, T, F]
 
-        noisy_mag = noisy_mag.unsqueeze(1)  # [B, 1, T, F]
-        noisy_pha = noisy_pha.unsqueeze(1)  # [B, 1, T, F]
+        # [B, 2, T, F] if input is 3-dimensional
+        # [B, 2 * C, T, F] if input is 4-dimensional and has C channels
         x = torch.cat((noisy_mag, noisy_pha), dim=1) # [B, 2, T, F]
+
+        # Conditioning
+        condition = None if time_cond is None else self.sinu_pos_emb(time_cond)
 
         B, C, T, F = x.shape
         if F % 2 == 0:
@@ -741,3 +757,27 @@ def get_conditional_norm(norm_type, dim, condition_dim):
         return AdaptiveRMSNorm(dim=dim, cond_dim=condition_dim)
     else:
         raise ValueError(f"Unknown conditional normalization {norm_type}")
+
+
+class LearnedSinusoidalPosEmb(nn.Module):
+    """The sinusoidal Embedding to encode time conditional information"""
+
+    def __init__(self, dim: int):
+        super().__init__()
+        if (dim % 2) != 0:
+            raise ValueError(f"Input dimension {dim} is not divisible by 2!")
+        half_dim = dim // 2
+        self.weights = nn.Parameter(torch.randn(half_dim))
+
+    def forward(self, t: torch.Tensor) -> torch.Tensor:
+        """
+        Args:
+          t: input time tensor, shape (B)
+
+        Return:
+          fouriered: the encoded time conditional embedding, shape (B, D)
+        """
+        t = einops.rearrange(t, 'b -> b 1')
+        freqs = t * einops.rearrange(self.weights, 'd -> 1 d') * 2 * math.pi
+        fouriered = torch.cat((freqs.sin(), freqs.cos()), dim=-1)
+        return fouriered
