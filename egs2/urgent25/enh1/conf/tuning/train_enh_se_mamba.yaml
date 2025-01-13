@@ -91,6 +91,10 @@ decoder_conf:
     n_fft: 256
     hop_length: 128
     default_fs: 8000
+    spec_transform_type: exponent
+    # keep as in the original SEMambaSeparator
+    spec_factor: 1.0
+    spec_abs_exponent: 0.3
 separator: se_mamba
 separator_conf:
     n_srcs: 1

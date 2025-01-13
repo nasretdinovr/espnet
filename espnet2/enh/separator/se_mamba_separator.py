@@ -173,9 +173,6 @@ class SEMambaSeparator(AbsSeparator):
             additional (Dict or None): other data, currently unused in this model,
                     we return it also in output.
         """
-
-        print('semamba Forward')
-
         # AJLOG: This `feature` is not used anywhere.
         # B, 2, T, (C,) F
         # if is_complex(input):
