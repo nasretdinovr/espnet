@@ -64,7 +64,7 @@ preprocessor_conf:
     data_aug_effects:   # no need to set the "sample_rate" argument for each effect here
     - [1.0, "bandwidth_limitation", {"res_type": "random"}]
     - [1.0, "clipping", {"min_quantile": 0.1, "max_quantile": 0.9}]
-    - [1.0, [[0.5, "codec", {"format": "mp3", "encoder": null, "qscale": [1, 10]}], [0.5, "codec", {"format": "ogg", "encoder": ["vorbis", "opus"], "qscale": [-1, 10]}]]]
+    - [1.0, [[0.5, "codec", {"format": "mp3", "encoder": null, "qscale": [1, 10]}], [0.5, "codec", {"format": "ogg", "encoder": ["vorbis", "opus"], "qscale": [1, 10]}]]]
     - [1.0, "packet_loss", {"packet_duration_ms": 20, "packet_loss_rate": [0.05, 0.25], "max_continuous_packet_loss": 10}]
     data_aug_num: [1, 3]  # at most 1 augmentation per sample
     data_aug_prob: 0.75
