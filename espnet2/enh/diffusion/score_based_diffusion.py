@@ -283,7 +283,7 @@ class FlowModel(AbsDiffusion):
     def enhance(
         self,
         noisy_specturm,
-        N=5,
+        N=20,
         **kwargs
     ):
         """Enhance function.
